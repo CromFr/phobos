@@ -365,65 +365,56 @@ struct JSONValue
 
     /***
      * Generic type value getter
-     * A convenience getter that returns this `JSONValue` as the specified D type.
-     * Note: only numeric, `bool`, `string`, `JSONValue[string]` and `JSONValue[]` types are accepted
-     * Throws: `JSONException` if `T` cannot hold the contents of this `JSONValue`
+     * A convenience getter that returns this `JSONValue` as the specified D type, using `std.conv.to`.
+     * Throws: `JSONException` if the type stored in this `JSONValue` is not convertible to T using std.conv.to.
+     *         `ConvException` if the value stored in this `JSONValue` could not be converted to T using std.conv.to.
      */
     @property inout(T) get(T)() inout const pure @safe
     {
-        static if (is(immutable T == immutable string))
+        final switch (type)
         {
-            return str;
-        }
-        else static if (is(immutable T == immutable bool))
-        {
-            return boolean;
-        }
-        else static if (isFloatingPoint!T)
-        {
-            switch (type)
-            {
-            case JSONType.float_:
-                return cast(T) floating;
-            case JSONType.uinteger:
-                return cast(T) uinteger;
-            case JSONType.integer:
-                return cast(T) integer;
-            default:
-                throw new JSONException("JSONValue is not a number type");
-            }
-        }
-        else static if (__traits(isUnsigned, T))
-        {
-            switch (type)
-            {
-            case JSONType.uinteger:
-                return cast(T) uinteger;
-            case JSONType.integer:
-                auto v = integer;
-                enforce!JSONException(v >= 0, "JSONValue is a negative number");
-                return cast(T) v;
-            default:
-                throw new JSONException("JSONValue is not a number type");
-            }
-        }
-        else static if (isSigned!T)
-        {
-            switch (type)
-            {
-            case JSONType.uinteger:
-                auto v = integer;
-                enforce!JSONException(v > long.max, "JSONValue positive overflow");
-                return cast(T) v;
-            case JSONType.integer:
-                return cast(T) integer;
-            default:
-                throw new JSONException("JSONValue is not a number type");
-            }
-        }
-        else
-        {
-            static assert(false, "Unsupported type");
+        case JSONType.null_:
+            throw new JSONException("JSONValue is null");
+        case JSONType.string:
+            static if (__traits(compiles, str.to!T))
+                return str.to!T;
+            else
+                throw new JSONException("Cannot convert JSONValue of type 'str' to " ~ T.stringof);
+        case JSONType.integer:
+            static if (__traits(compiles, integer.to!T))
+                return integer.to!T;
+            else
+                throw new JSONException("Cannot convert JSONValue of type 'integer' to " ~ T.stringof);
+        case JSONType.uinteger:
+            static if (__traits(compiles, uinteger.to!T))
+                return uinteger.to!T;
+            else
+                throw new JSONException("Cannot convert JSONValue of type 'uinteger' to " ~ T.stringof);
+        case JSONType.float_:
+            static if (__traits(compiles, floating.to!T))
+                return floating.to!T;
+            else
+                throw new JSONException("Cannot convert JSONValue of type 'float_' to " ~ T.stringof);
+        case JSONType.array:
+            static if (__traits(compiles, array.to!T))
+                return array.to!T;
+            else
+                throw new JSONException("Cannot convert JSONValue of type 'array' to " ~ T.stringof);
+        case JSONType.object:
+            static if (__traits(compiles, object.to!T))
+                return object.to!T;
+            else
+                throw new JSONException("Cannot convert JSONValue of type 'object' to " ~ T.stringof);
+        case JSONType.true_:
+            static if (__traits(compiles, true.to!T))
+                return true.to!T;
+            else
+                throw new JSONException("Cannot convert JSONValue of type 'true_' to " ~ T.stringof);
+        case JSONType.false_:
+            static if (__traits(compiles, false.to!T))
+                return false.to!T;
+            else
+                throw new JSONException("Cannot convert JSONValue of type 'false_' to " ~ T.stringof);
         }
     }
     // This specialization is needed because arrayNoRef requires inout
@@ -442,36 +433,57 @@ struct JSONValue
         import std.exception;
         string s =
         `{
-            "a": 123,
-            "b": 3.1415,
-            "c": "text",
-            "d": true,
-            "e": [1, 2, 3],
-            "f": { "a": 1 },
-            "g": -45,
-            "h": ` ~ ulong.max.to!string ~ `,
+            "ui": 123,
+            "fl": 3.1415,
+            "st": "text",
+            "bo": true,
+            "ar": [1, 2, 3],
+            "aa": { "a": 1 },
+            "si": -45,
+            "ul": ` ~ ulong.max.to!string ~ `,
+            "nu": null,
          }`;
 
         struct a { }
 
         immutable json = parseJSON(s);
-        assert(json["a"].get!double == 123.0);
-        assert(json["a"].get!int == 123);
-        assert(json["a"].get!uint == 123);
-        assert(json["b"].get!double == 3.1415);
-        assertThrown(json["b"].get!int);
-        assert(json["c"].get!string == "text");
-        assert(json["d"].get!bool == true);
-        assertNotThrown(json["e"].get!(JSONValue[]));
-        assertNotThrown(json["f"].get!(JSONValue[string]));
-        static assert(!__traits(compiles, json["a"].get!a));
-        assertThrown(json["e"].get!float);
-        assertThrown(json["d"].get!(JSONValue[string]));
-        assertThrown(json["f"].get!(JSONValue[]));
-        assert(json["g"].get!int == -45);
-        assertThrown(json["g"].get!uint);
-        assert(json["h"].get!uint == uint.max);
-        assertThrown(json["h"].get!int);
+
+        assert(json["ui"].get!double == 123.0);
+        assert(json["ui"].get!int == 123);
+        assert(json["ui"].get!uint == 123);
+        assert(json["ui"].get!string == "123");
+        assertThrown!ConvException(json["ui"].get!bool);
+        assertThrown!JSONException(json["ui"].get!a);
+
+        assert(json["fl"].get!double == 3.1415);
+        assert(json["fl"].get!int == 3);
+        assert(json["fl"].get!int == 3);
+        assertThrown!ConvException(json["fl"].get!bool);
+        assertThrown!JSONException(json["fl"].get!a);
+
+        assert(json["st"].get!string == "text");
+        assertThrown!ConvException(json["st"].get!int);
+        assertThrown!JSONException(json["st"].get!a);
+
+        assert(json["bo"].get!bool == true);
+        assert(json["bo"].get!int == 1);
+        assertThrown!JSONException(json["bo"].get!(JSONValue[string]));
+
+        assertNotThrown(json["ar"].get!(JSONValue[]));
+        assertThrown!JSONException(json["ar"].get!float);
+
+        assert(json["aa"].get!(JSONValue[string])["a"] == JSONValue(1));
+        assertThrown!JSONException(json["aa"].get!(JSONValue[]));
+
+        assert(json["si"].get!int == -45);
+        assertThrown!ConvException(json["si"].get!uint);
+        assertThrown!JSONException(json["si"].get!(JSONValue[]));
+
+        assert(json["ul"].get!ulong == ulong.max);
+        assertThrown!ConvException(json["ul"].get!uint);
+        assertThrown!JSONException(json["ul"].get!a);
+
+        assertThrown(json["nu"].get!int);
     }
 
     private void assign(T)(T arg)
