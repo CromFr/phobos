@@ -371,6 +371,7 @@ struct JSONValue
      */
     @property inout(T) get(T)() inout const pure @safe
     {
+        import std.conv : to;
         final switch (type)
         {
         case JSONType.null_:
@@ -431,6 +432,7 @@ struct JSONValue
     @safe unittest
     {
         import std.exception;
+        import std.conv;
         string s =
         `{
             "ui": 123,
